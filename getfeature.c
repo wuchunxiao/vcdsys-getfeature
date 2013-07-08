@@ -746,6 +746,7 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 	return 0;
 }
 
+
 int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, long long *duration, int jpgnum)
 {
 	// init decode
@@ -879,7 +880,7 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 		if(id != -1)    // start_id != -1时, 对视频名称按照id(1,2,...)重新命名,进行存储
 		{
 			sprintf(absfile,"%s/%d.flv",abspath,id);  
-		      	sprintf(saveViewPath , "%s/%d/" , abspath, id);
+		    sprintf(saveViewPath , "%s/%d/" , abspath, id);
 			mkdir(saveViewPath,S_IRWXU);	
 		}
 		else            // start_id == -1时,按照视频的原名进行存储
@@ -984,7 +985,7 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 
 				float* currFeatures = features+matchFrameNum*INDEX_FEATURE_DIM; //ALL_FEATURES_DIM;
 				//== 2. fetch and write current frame's features into file
-				get_feature(yuvdata,width,height,currFeatures);
+				get_vlad_feature(yuvdata,width,height,currFeatures);
 				//== 3. filter similar frame
 				//if(vkfcount == 0 || ++framecount == step && ifabs )
 				if(++framecount == 5)   // 每隔5帧存一张图片

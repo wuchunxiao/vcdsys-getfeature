@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <string.h>
 #include "getfeature.h"
+// #include "./libvl/generic.h"
 int main(int argc, char **argv)
 {
 	DIR* videodb;   
@@ -28,7 +29,7 @@ int main(int argc, char **argv)
 
 	long long duration = 0;
 	int jpgnum = 20;
-
+	// VL_PRINT("vlfeat test\n");
 	while ((p=readdir(videodb)))   
 	{   
 		if((strcmp(p->d_name,".")==0)||(strcmp(p->d_name,"..")==0))   

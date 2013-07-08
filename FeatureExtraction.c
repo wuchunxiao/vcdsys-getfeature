@@ -1,4 +1,9 @@
 
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include "libvl/generic.h"
+#include "libvl/sift.h"
 #include "FeatureExtraction.h"
 
 const float PI = 3.1415926F;
@@ -26,6 +31,128 @@ const float PI = 3.1415926F;
 #define STEP_SIZE		2
 #define	CHECK_POINT	5
 #define TH_LUMA			30
+#define MAX_SIFT_FEATURE_NUM 10000
+#define SIFT_DESCRIPTOR_DIM 128
+
+int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
+{
+	float * sift_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * MAX_SIFT_FEATURE_NUM * sizeof(float));
+	vl_sift_pix *img_data = (vl_sift_pix *)malloc(sizeof(vl_sift_pix) * nw * nh);
+	if(img_data == NULL)
+	{
+		return -1;
+	}
+	unsigned char *pixel;
+	int i = 0, j = 0;
+	for(i = 0;i < nh;++i)
+	{
+		for(j = 0;j < nw;++j)
+		{
+			pixel = (unsigned char *)(data + i * nw + j);
+			img_data[i * nw + j] = *pixel;
+		}
+	}
+	int noctaves = 4, nlevels = 3, o_min = -1;
+	VlSiftFilt *sift_filt = NULL;
+	sift_filt =  vl_sift_new(nw, nh, noctaves, nlevels, o_min);
+	int num_descriptors = 0;
+	// int save_flag = -1;
+	if(vl_sift_process_first_octave(sift_filt,img_data) != VL_ERR_EOF)
+	{
+		while(1)
+		{
+			vl_sift_detect(sift_filt);
+			VlSiftKeypoint *sift_keypoints = sift_filt->keys; 
+			for(i = 0; i < sift_filt->nkeys;++i)
+			{
+				VlSiftKeypoint temp_sift_keypoint = *sift_keypoints;
+				double angles[4];
+				int angle_count = vl_sift_calc_keypoint_orientations(sift_filt,angles,&temp_sift_keypoint);
+				for(j = 0; j < angle_count;++j)
+				{
+					double temp_angle = angles[j];
+					float *descriptor = (float *)malloc(sizeof(float) * SIFT_DESCRIPTOR_DIM);
+					vl_sift_calc_keypoint_descriptor(sift_filt, descriptor, &temp_sift_keypoint, temp_angle);
+					float *curr_features = features + num_descriptors * SIFT_DESCRIPTOR_DIM;
+					// if(save_flag == -1)
+					// {
+						memcpy(curr_features,descriptor,sizeof(float) * INDEX_FEATURE_DIM);
+						//save_flag == 1;
+					// }
+					++num_descriptors;
+					free(descriptor);
+				}
+				++sift_keypoints;
+			}
+			if(vl_sift_process_next_octave(sift_filt) == VL_ERR_EOF)
+			{
+				break;
+			}
+		}
+	}
+	vl_sift_delete(sift_filt);
+	free(img_data);
+	
+	free(sift_features);
+	return 0;
+}
+
+// Read a set of vectors stored in the fvec format(int + n * float)
+// The function return a set of output vector
+int ReadFvecs(char *filename,int *vector_dim,float *vectors)
+{
+	FILE *file = fopen(filename,"rb");
+	if(file == NULL)
+	{
+		printf("I/O error: Unable to open the file %s\n", filename);
+		return -1;
+	}
+	// read the dim of vector
+	int d = 0;
+	fread(&d, sizeof(int), 1 ,file);
+	vector_dim = d;
+	
+	int vector_num = 0;
+	fseek(file,0,SEEK_SET);	
+	while(!feof(file))
+	{
+		fseek(file,4,SEEK_CUR);	
+		float *cur_vector = vectors + vector_num * vector_dim;
+		fread(cur_vector,sizeof(float),vector_dim)
+		++vector_num;
+	}
+	fclose(file);
+	/*
+	int vecsizeof =  1 * 4 + d * 4;
+	
+	// get the number of vectors
+	fseek(file,0,SEEK_END);
+	int bmax = ftell(file);
+	if(bmax == 0)
+	{
+		vectors = NULL;
+		return 0;
+	}
+	bmax = floor(bmax / vecsizeof);
+	if(bmax == 0)
+	{
+		vectors = NULL;
+		return 0;
+	}
+	int b = bmax;
+	
+	fseek(file,0,SEEK_SET);
+	int i = 0;
+	for(i = 0;i < b;++i)
+	{
+		fseek(file,4,SEEK_CUR);
+		float *curr_vector = vectors + i * d;
+		fread(curr_vectors,sizeof(float),d);		
+	}
+	// fread(vectors,sizeof(float),(d + 1) * b);
+	fclose(file);*/
+	
+}
 
 //== this function generates the features of patches in current frame
 int get_feature(unsigned char* data, int nw, int nh, float* features)
