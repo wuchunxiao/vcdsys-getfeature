@@ -38,7 +38,7 @@ int main(int argc, char **argv)
 		{   
 			memset(videofile,0,1024);
 			sprintf(videofile,"%s\%s",argv[1],p->d_name);    
-			//while(1)
+			// while(1)
 			{
 				printf("Getting %s's Feature\n",videofile);
 				if(feaid != -1)

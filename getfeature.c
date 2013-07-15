@@ -19,7 +19,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define MAX_FEATURE_FRAME 1000000
+#define MAX_FEATURE_FRAME 10000
 #define SEND_FEATURE_FRAME 4096
 
 pthread_mutex_t yuvlist_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -749,6 +749,7 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 
 int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, long long *duration, int jpgnum)
 {
+	printf("video = %s\nfea = %s\nabs = %s\n",videofile,fealibpath,abspath);
 	// init decode
 	static AVPacket packet;
 	AVFormatContext *pFormatCtx;
@@ -921,6 +922,7 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 	float* features = (float*)malloc(INDEX_FEATURE_DIM*MAX_FEATURE_FRAME*sizeof(float));
 	if(features == NULL)
 	{
+		printf("Memory overflow error:can't apply features memory!\n");
 		return -1;
 	}
 
@@ -1050,6 +1052,11 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 		}    
 
 		FILE * pfFeature = fopen(smpfile, "wb");
+		if(pfFeature == NULL)
+		{
+			printf("I/O error: Unable to open the file %s\n", smpfile);
+			return -1;
+		}
 		fwrite(&matchFrameNum,sizeof(int),1,pfFeature);
 		int i = 0;
 		for (i=0; i<matchFrameNum; i++)

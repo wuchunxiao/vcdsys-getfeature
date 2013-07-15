@@ -33,10 +33,72 @@ const float PI = 3.1415926F;
 #define TH_LUMA			30
 #define MAX_SIFT_FEATURE_NUM 10000
 #define SIFT_DESCRIPTOR_DIM 128
+#define VLAD_CENTROIDS_NUM 64
+// #define INFINITE 1000000
 
 int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
 {
-	float * sift_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * MAX_SIFT_FEATURE_NUM * sizeof(float));
+	//printf("here 0\n");
+	float *sift_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * MAX_SIFT_FEATURE_NUM * sizeof(float));	// 没初始化
+	int sift_features_num = 0;
+	GetSiftFeatures(data, nw, nh, sift_features,&sift_features_num);
+	printf("sift_num = %d \n",sift_features_num);
+	printf("here 1\n");
+
+	char *centroids_file = "data/clust_k64.fvecs";
+	int centroids_dim = 0;
+	float *centroids = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM * sizeof(float));
+	ReadFvecs(centroids_file,&centroids_dim,centroids);
+	Norm2(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM,centroids);
+	int s = 0 ,t = 0;
+	for(s = 0;s < SIFT_DESCRIPTOR_DIM;++s)
+	{
+		// printf("cen = %f \n",centroids[s]);
+	}
+	// printf("cen_dim = %d\n",centroids_dim);
+	printf("here 2\n");
+	
+	int *idx = (int *)malloc(sift_features_num * sizeof(int));
+	float *dis = (float *)malloc(sift_features_num * sizeof(float));
+	memset(idx,0,sift_features_num * sizeof(int));
+	memset(dis,0,sift_features_num * sizeof(float));
+	FindNearestNeighbors(centroids,VLAD_CENTROIDS_NUM,sift_features,sift_features_num,SIFT_DESCRIPTOR_DIM,idx,dis);
+	for(s = 0;s < sift_features_num;++s)
+	{
+		// printf("idx = %d,dis = %f\n",idx[s],dis[s]);
+	}
+	printf("here 3\n");
+	
+	float *vlad_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
+	memset(vlad_features,0,SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
+	int i = 0,j = 0;
+	for(i = 0;i < sift_features_num;++i)
+	{
+		for(j = 0;j < SIFT_DESCRIPTOR_DIM;++j)
+		{
+			vlad_features[idx[i] *  SIFT_DESCRIPTOR_DIM + j] += sift_features[i * SIFT_DESCRIPTOR_DIM + j] -
+																centroids[idx[i] * SIFT_DESCRIPTOR_DIM + j];
+		}
+	}
+	printf("here 4.1\n");
+	// exit(1);
+	// L2-normalized
+	Norm2(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM,vlad_features);	
+	printf("here 4.2\n");
+	
+	memcpy(features,vlad_features,INDEX_FEATURE_DIM * sizeof(float));	
+	printf("here 5");
+	free(idx);
+	free(dis);
+	free(centroids);
+	free(sift_features);
+	free(vlad_features);
+
+	return 0;
+}
+
+int GetSiftFeatures(unsigned char *data, int nw, int nh, float *features, int *features_num)
+{
 	vl_sift_pix *img_data = (vl_sift_pix *)malloc(sizeof(vl_sift_pix) * nw * nh);
 	if(img_data == NULL)
 	{
@@ -90,11 +152,47 @@ int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
 			}
 		}
 	}
+	*features_num = num_descriptors;
 	vl_sift_delete(sift_filt);
 	free(img_data);
-	
-	free(sift_features);
 	return 0;
+}
+
+// 此处采用线性查找的方法,因为VLAD聚类中心一般个数不多,此处为64个.
+// 如果想要提高速度,可用VLFEAT里的kd-tree方法,根据FLANN编写的,或者融yael库
+// input
+// 	v	the dataset to be searched
+//	nv	the num of dataset
+// 	q	the set of queries
+//	nq	...
+//	dim	the feature dim
+// output
+// 	idx	the vector index of the nearest neighbor
+// 	dis	the corresponding distance	
+void FindNearestNeighbors(float *v,int nv,float *q,int nq,int dim,int idx[],float dis[])
+{
+	// int nq = sizeof(q) / dim;
+	// int nv = sizeof(v) / dim;
+	int i = 0, j = 0,k = 0;
+	for(i = 0;i < nq;++i)	// query
+	{
+		// dis[i] = INFINITE;
+		for(j = 0;j < nv;++j)	// dataset
+		{
+			float distance = 0.0;
+			for(k = 0;k < dim;++k)
+			{
+				distance += q[i*dim+k] * q[i*dim+k] + v[j*dim+k] * v[j*dim+k] - 2 * q[i*dim+k] * v[j*dim+k];
+				// distance += (q[i*dim+k] - v[j*dim+k]) * (q[i*dim+k] - v[j*dim+k]);	// 跟上面的一样
+			}
+			// printf("dis = %f\n",distance);
+			if(j == 0 || distance < dis[i])
+			{
+				dis[i] = distance;
+				idx[i] = j;
+			}
+		}
+	}
 }
 
 // Read a set of vectors stored in the fvec format(int + n * float)
@@ -110,18 +208,19 @@ int ReadFvecs(char *filename,int *vector_dim,float *vectors)
 	// read the dim of vector
 	int d = 0;
 	fread(&d, sizeof(int), 1 ,file);
-	vector_dim = d;
+	*vector_dim = d;
 	
 	int vector_num = 0;
 	fseek(file,0,SEEK_SET);	
 	while(!feof(file))
 	{
 		fseek(file,4,SEEK_CUR);	
-		float *cur_vector = vectors + vector_num * vector_dim;
-		fread(cur_vector,sizeof(float),vector_dim)
+		float *cur_vector = vectors + vector_num * d;
+		fread(cur_vector,sizeof(float),d,file);
 		++vector_num;
 	}
 	fclose(file);
+	return 0;
 	/*
 	int vecsizeof =  1 * 4 + d * 4;
 	
@@ -152,6 +251,27 @@ int ReadFvecs(char *filename,int *vector_dim,float *vectors)
 	// fread(vectors,sizeof(float),(d + 1) * b);
 	fclose(file);*/
 	
+}
+
+void Norm2(int nv,float *v)
+{
+	int i = 0;
+	float sum = 0.0;
+	for(i = 0;i < nv;++i)
+	{
+		sum += v[i] * v[i];
+	}
+	sum = sqrt(sum);
+	if(sum == 0)
+	{
+		for(i = 0;i < nv;++i)
+			v[i] = 1.0;
+	}
+	else
+	{
+		for(i = 0;i < nv;++i)
+			v[i] /= sum;
+	}
 }
 
 //== this function generates the features of patches in current frame

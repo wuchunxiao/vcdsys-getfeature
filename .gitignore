@@ -1,0 +1,8 @@
+*.a
+*.o
+*.so
+.*.swp
+*~
+.gitignore
+data/
+result/
