@@ -19,7 +19,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define MAX_FEATURE_FRAME 10000
+#define MAX_FEATURE_FRAME 100000
 #define SEND_FEATURE_FRAME 4096
 
 pthread_mutex_t yuvlist_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -655,7 +655,7 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 
 				float* currFeatures = features+matchFrameNum*INDEX_FEATURE_DIM; //ALL_FEATURES_DIM;
 				//== 2. fetch and write current frame's features into file
-				get_feature(yuvdata,width,height,currFeatures);
+				get_vlad_feature(yuvdata,width,height,currFeatures);
 				//== 3. filter similar frame
 
 				//== 4.show picture
@@ -749,7 +749,6 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 
 int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, long long *duration, int jpgnum)
 {
-	printf("video = %s\nfea = %s\nabs = %s\n",videofile,fealibpath,abspath);
 	// init decode
 	static AVPacket packet;
 	AVFormatContext *pFormatCtx;
@@ -918,6 +917,7 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 
 	int matchFrameNum = 0;
 	int framecount = 0;
+	int totalframecount = 0;
 	int vkfcount = 0;
 	float* features = (float*)malloc(INDEX_FEATURE_DIM*MAX_FEATURE_FRAME*sizeof(float));
 	if(features == NULL)
@@ -976,7 +976,9 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 						offset += yuvwidth;
 					}	
 				}
-				
+			
+				totalframecount++;				
+	
 				//== 1.filter none match frames,
 				if (!FilterFrame(yuvdata,width, height))
 				{							
@@ -1027,6 +1029,8 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 	
 	//delete [] buffer;
 	av_free(pFrameYUV);
+	
+	printf("***************************Total Frame Count is %d\n",totalframecount);
 
 	// Reduce the features
 	matchFrameNum = FeatureRefine(matchFrameNum,features);

@@ -43,31 +43,25 @@ int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
 	int sift_features_num = 0;
 	GetSiftFeatures(data, nw, nh, sift_features,&sift_features_num);
 	printf("sift_num = %d \n",sift_features_num);
-	printf("here 1\n");
+	// printf("here 1\n");
 
 	char *centroids_file = "data/clust_k64.fvecs";
 	int centroids_dim = 0;
 	float *centroids = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM * sizeof(float));
 	ReadFvecs(centroids_file,&centroids_dim,centroids);
-	Norm2(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM,centroids);
-	int s = 0 ,t = 0;
-	for(s = 0;s < SIFT_DESCRIPTOR_DIM;++s)
+	int cn = 0;
+	for(cn = 0;cn < SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;cn += SIFT_DESCRIPTOR_DIM)
 	{
-		// printf("cen = %f \n",centroids[s]);
+		Norm2(SIFT_DESCRIPTOR_DIM,centroids + cn);
 	}
-	// printf("cen_dim = %d\n",centroids_dim);
-	printf("here 2\n");
+	// printf("here 2\n");
 	
 	int *idx = (int *)malloc(sift_features_num * sizeof(int));
 	float *dis = (float *)malloc(sift_features_num * sizeof(float));
 	memset(idx,0,sift_features_num * sizeof(int));
 	memset(dis,0,sift_features_num * sizeof(float));
 	FindNearestNeighbors(centroids,VLAD_CENTROIDS_NUM,sift_features,sift_features_num,SIFT_DESCRIPTOR_DIM,idx,dis);
-	for(s = 0;s < sift_features_num;++s)
-	{
-		// printf("idx = %d,dis = %f\n",idx[s],dis[s]);
-	}
-	printf("here 3\n");
+	// printf("here 3\n");
 	
 	float *vlad_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
 	memset(vlad_features,0,SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
@@ -80,14 +74,14 @@ int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
 																centroids[idx[i] * SIFT_DESCRIPTOR_DIM + j];
 		}
 	}
-	printf("here 4.1\n");
-	// exit(1);
+	// printf("here 4.1\n");
+	//exit(1);
 	// L2-normalized
 	Norm2(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM,vlad_features);	
-	printf("here 4.2\n");
+	// printf("here 4.2\n");
 	
 	memcpy(features,vlad_features,INDEX_FEATURE_DIM * sizeof(float));	
-	printf("here 5");
+	//printf("here 5");
 	free(idx);
 	free(dis);
 	free(centroids);
