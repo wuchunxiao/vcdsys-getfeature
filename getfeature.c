@@ -989,7 +989,7 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 
 				float* currFeatures = features+matchFrameNum*INDEX_FEATURE_DIM; //ALL_FEATURES_DIM;
 				//== 2. fetch and write current frame's features into file
-				get_vlad_feature(yuvdata,width,height,currFeatures);
+				get_pca_vlad_feature(yuvdata,width,height,INDEX_FEATURE_DIM,currFeatures);
 				//== 3. filter similar frame
 				//if(vkfcount == 0 || ++framecount == step && ifabs )
 				if(++framecount == 5)   // 每隔5帧存一张图片

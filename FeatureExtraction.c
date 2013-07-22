@@ -38,6 +38,70 @@ const float PI = 3.1415926F;
 
 int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
 {
+	
+	float *vlad_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
+	if(vlad_features == NULL)
+	{
+		printf("Memory overflow error:can't apply features memory!\n");
+		return -1;
+	}
+	memset(vlad_features,0,SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
+	ExtractVladFeatures(data,nw,nh,vlad_features);
+	memcpy(features,vlad_features,INDEX_FEATURE_DIM * sizeof(float));	
+	free(vlad_features);
+	return 0;
+}
+
+//*****centroids and pca_proj_matrix files shuold be readed only once!!!***************8
+// input:
+//	pca_dim, 降到多少维
+int get_pca_vlad_feature(unsigned char *data,int nw,int nh,int pca_dim,float *features)
+{
+	float *vlad_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
+	if(vlad_features == NULL)
+	{
+		printf("Memory overflow error:can't apply features memory!\n");
+		return -1;
+	}
+	memset(vlad_features,0,SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
+	ExtractVladFeatures(data,nw,nh,vlad_features);
+	printf("here 1\n");
+
+	int vlad_feature_dim = SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;
+	char *f_pca_proj = "data/pca_proj_matrix_vladk64_flickr1Mstar.fvecs";
+	float *mean = (float *)malloc(vlad_feature_dim * sizeof(float));
+	float *pca_proj = (float *)malloc(vlad_feature_dim * 1024 *sizeof(float));	// only the 1024 eigenvectors are stored
+	ReadPCAProj(f_pca_proj,mean,pca_proj);
+	printf("here 2\n");
+	
+	float *pca_vlad_features = (float *)malloc(pca_dim * sizeof(float));
+	int i = 0;
+	for(i = 0;i < vlad_feature_dim;++i)
+	{
+		vlad_features[i] -= mean[i];
+	}
+	int j = 0;
+	for(i = 0;i < pca_dim;++i)
+	{
+		float sum = 0;
+		for(j = 0;j < vlad_feature_dim;++j)	
+		{
+			sum += pca_proj[i * vlad_feature_dim + j] * vlad_features[j];
+		}
+		pca_vlad_features[i] = sum;
+	}
+	printf("here 3\n");
+	Norm2(pca_dim,pca_vlad_features);
+	memcpy(features,pca_vlad_features,pca_dim * sizeof(float));
+	free(mean);
+	free(pca_proj);
+	free(vlad_features);
+	free(pca_vlad_features);
+	return 0;
+}
+
+int ExtractVladFeatures(unsigned char* data, int nw, int nh, float* vlad_features)
+{
 	//printf("here 0\n");
 	float *sift_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * MAX_SIFT_FEATURE_NUM * sizeof(float));	// 没初始化
 	int sift_features_num = 0;
@@ -63,8 +127,8 @@ int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
 	FindNearestNeighbors(centroids,VLAD_CENTROIDS_NUM,sift_features,sift_features_num,SIFT_DESCRIPTOR_DIM,idx,dis);
 	// printf("here 3\n");
 	
-	float *vlad_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
-	memset(vlad_features,0,SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
+	// float *vlad_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
+	// memset(vlad_features,0,SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
 	int i = 0,j = 0;
 	for(i = 0;i < sift_features_num;++i)
 	{
@@ -80,14 +144,13 @@ int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
 	Norm2(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM,vlad_features);	
 	// printf("here 4.2\n");
 	
-	memcpy(features,vlad_features,INDEX_FEATURE_DIM * sizeof(float));	
+	//memcpy(features,vlad_features,INDEX_FEATURE_DIM * sizeof(float));	
 	//printf("here 5");
 	free(idx);
 	free(dis);
 	free(centroids);
 	free(sift_features);
-	free(vlad_features);
-
+	// free(vlad_features);
 	return 0;
 }
 
@@ -245,6 +308,29 @@ int ReadFvecs(char *filename,int *vector_dim,float *vectors)
 	// fread(vectors,sizeof(float),(d + 1) * b);
 	fclose(file);*/
 	
+}
+
+// This function reads pca project matrix and mean of the vectors
+// input
+//	filename ...
+// output
+// 	mean, the mean of the vectors,Note that VLAD are already almost centered
+//	pca_proj, the project matrix
+int ReadPCAProj(char *filename,float *mean,float *pca_proj)
+{
+	FILE *file = fopen(filename,"rb");
+	if(file == NULL)
+	{
+		printf("I/O error: Unable to open the file %s\n", filename);
+		return -1;
+	}
+	int d = 0;
+	fread(&d, sizeof(int), 1 ,file);
+	fread(mean,sizeof(float),d,file);
+	fread(&d,sizeof(int), 1,file);
+	fread(pca_proj,sizeof(float),d,file);
+	fclose(file);
+	return 0;
 }
 
 void Norm2(int nv,float *v)
