@@ -596,6 +596,15 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 	{
 		return -1;
 	}
+	char *centroids_file = "data/clust_k64.fvecs";
+	float *centroids = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM * sizeof(float));
+	int centroids_dim = 0;
+	ReadFvecs(centroids_file,&centroids_dim,centroids);
+	int cn = 0;
+	for(cn = 0;cn < SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;cn += SIFT_DESCRIPTOR_DIM)
+	{
+		Norm2(SIFT_DESCRIPTOR_DIM,centroids + cn);
+	}
 	while(av_read_frame(pFormatCtx,&packet)>=0)
 	{
 		if(packet.stream_index==videoStream)
@@ -655,7 +664,7 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 
 				float* currFeatures = features+matchFrameNum*INDEX_FEATURE_DIM; //ALL_FEATURES_DIM;
 				//== 2. fetch and write current frame's features into file
-				get_vlad_feature(yuvdata,width,height,currFeatures);
+				get_vlad_feature(yuvdata,width,height,centroids,currFeatures);
 				//== 3. filter similar frame
 
 				//== 4.show picture
@@ -735,6 +744,7 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 
 	}
 
+	free(centroids);
 	free(features);
 	avcodec_close(pCodecCtx);
 	av_close_input_file(pFormatCtx);
@@ -925,7 +935,30 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 		printf("Memory overflow error:can't apply features memory!\n");
 		return -1;
 	}
-
+	// printf("sif_dim = %d,vlad_cen_num = %d\n",SIFT_DESCRIPTOR_DIM , VLAD_CENTROIDS_NUM);
+	char *centroids_file = "data/clust_k64.fvecs";
+	float *centroids = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM * sizeof(float));
+	if(centroids == NULL)
+	{
+		printf("Memory overflow error:can't apply features memory!\n");
+		return -1;
+	}
+	int centroids_dim = 0;
+	ReadFvecs(centroids_file,&centroids_dim,centroids);
+	int cn = 0;
+	for(cn = 0;cn < SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;cn += SIFT_DESCRIPTOR_DIM)
+	{
+		Norm2(SIFT_DESCRIPTOR_DIM,centroids + cn);
+	}
+	int do_compute_pca_vlad = 1;
+	int vlad_feature_dim = SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;
+	char *f_pca_proj = "data/pca_proj_matrix_vladk64_flickr1Mstar.fvecs";
+	float *mean = (float *)malloc(vlad_feature_dim * sizeof(float));
+	float *pca_proj = (float *)malloc(vlad_feature_dim * 1024 *sizeof(float));	// only the 1024 eigenvectors are stored
+	if(do_compute_pca_vlad)
+	{
+		ReadPCAProj(f_pca_proj,mean,pca_proj);
+	}
 	prepareTran();
 	
 	while(av_read_frame(pFormatCtx,&packet)>=0)
@@ -986,10 +1019,11 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 					free(yuvdata);
 					continue;
 				}				
-
+				// printf("get_vald\n");
 				float* currFeatures = features+matchFrameNum*INDEX_FEATURE_DIM; //ALL_FEATURES_DIM;
 				//== 2. fetch and write current frame's features into file
-				get_pca_vlad_feature(yuvdata,width,height,INDEX_FEATURE_DIM,currFeatures);
+				// get_vlad_feature(yuvdata,width,height,centroids,currFeatures);
+				get_pca_vlad_feature(yuvdata,width,height,centroids,mean,pca_proj,INDEX_FEATURE_DIM,currFeatures);
 				//== 3. filter similar frame
 				//if(vkfcount == 0 || ++framecount == step && ifabs )
 				if(++framecount == 5)   // 每隔5帧存一张图片
@@ -1054,6 +1088,34 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 			strcat(filename,".smp");
 			sprintf(smpfile,"%s/%s",fealibpath,filename);
 		}    
+		/*if(do_compute_pca_vlad)
+		{
+			int pca_dim = 128;
+			float *pca_vlad_features = (float *)malloc(matchFrameNum * pca_dim * sizeof(float));
+			int i = 0,j = 0;
+			for(i = 0;i < matchFrameNum;++i)
+			{
+				for(j = 0;j < vlad_feature_dim;++i)
+				{
+					features[i * vlad_feature_dim + j] -= mean[j];
+				}
+			}
+			int k = 0;
+			for(k = 0;k < matchFrameNum;++k)
+			{
+				for(i = 0;i < pca_dim;++i)
+				{
+					float sum = 0;
+					for(j = 0;j < vlad_feature_dim;++j)	
+					{
+						sum += pca_proj[i * vlad_feature_dim + j] * vlad_features[k * vlad_feature_dim + j];
+					}
+					pca_vlad_features[k * vlad_feature_dim + i] = sum;
+				}
+			}
+			for(i = 0;i < matchFrameNum;i += pca_dim)
+				Norm2(pca_dim,pca_vlad_features + i);
+		}*/
 
 		FILE * pfFeature = fopen(smpfile, "wb");
 		if(pfFeature == NULL)
@@ -1077,6 +1139,10 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 
 	}
 
+	free(mean);
+	free(pca_proj);
+
+	free(centroids);
 	free(features);
 	avcodec_close(pCodecCtx);
 	av_close_input_file(pFormatCtx);

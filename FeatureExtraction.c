@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "libvl/generic.h"
 #include "libvl/sift.h"
+#include "define.h"
 #include "FeatureExtraction.h"
 
 const float PI = 3.1415926F;
@@ -31,14 +32,11 @@ const float PI = 3.1415926F;
 #define STEP_SIZE		2
 #define	CHECK_POINT	5
 #define TH_LUMA			30
-#define MAX_SIFT_FEATURE_NUM 10000
-#define SIFT_DESCRIPTOR_DIM 128
-#define VLAD_CENTROIDS_NUM 64
 // #define INFINITE 1000000
 
-int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
+int get_vlad_feature(unsigned char* data, int nw, int nh, float *centroids, float* features)
 {
-	
+	// printf("here 0\n");
 	float *vlad_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
 	if(vlad_features == NULL)
 	{
@@ -46,7 +44,9 @@ int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
 		return -1;
 	}
 	memset(vlad_features,0,SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
-	ExtractVladFeatures(data,nw,nh,vlad_features);
+	// printf("here 1\n");
+	ExtractVladFeatures(data,nw,nh,centroids,vlad_features);
+	// printf("here 2\n");
 	memcpy(features,vlad_features,INDEX_FEATURE_DIM * sizeof(float));	
 	free(vlad_features);
 	return 0;
@@ -55,24 +55,24 @@ int get_vlad_feature(unsigned char* data, int nw, int nh, float* features)
 //*****centroids and pca_proj_matrix files shuold be readed only once!!!***************8
 // input:
 //	pca_dim, 降到多少维
-int get_pca_vlad_feature(unsigned char *data,int nw,int nh,int pca_dim,float *features)
+int get_pca_vlad_feature(unsigned char *data,int nw,int nh,float *centroids,float *mean,float *pca_proj,int pca_dim,float *features)
 {
 	float *vlad_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
 	if(vlad_features == NULL)
 	{
-		printf("Memory overflow error:can't apply features memory!\n");
+		printf("Memory overflow error:can't apply vlad features memory!\n");
 		return -1;
 	}
 	memset(vlad_features,0,SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM *sizeof(float));
-	ExtractVladFeatures(data,nw,nh,vlad_features);
-	printf("here 1\n");
+	ExtractVladFeatures(data,nw,nh,centroids,vlad_features);
+	//printf("here 1\n");
 
 	int vlad_feature_dim = SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;
-	char *f_pca_proj = "data/pca_proj_matrix_vladk64_flickr1Mstar.fvecs";
-	float *mean = (float *)malloc(vlad_feature_dim * sizeof(float));
-	float *pca_proj = (float *)malloc(vlad_feature_dim * 1024 *sizeof(float));	// only the 1024 eigenvectors are stored
-	ReadPCAProj(f_pca_proj,mean,pca_proj);
-	printf("here 2\n");
+	// char *f_pca_proj = "data/pca_proj_matrix_vladk64_flickr1Mstar.fvecs";
+	// float *mean = (float *)malloc(vlad_feature_dim * sizeof(float));
+	// float *pca_proj = (float *)malloc(vlad_feature_dim * 1024 *sizeof(float));	// only the 1024 eigenvectors are stored
+	// ReadPCAProj(f_pca_proj,mean,pca_proj);
+	// printf("here 2\n");
 	
 	float *pca_vlad_features = (float *)malloc(pca_dim * sizeof(float));
 	int i = 0;
@@ -90,34 +90,39 @@ int get_pca_vlad_feature(unsigned char *data,int nw,int nh,int pca_dim,float *fe
 		}
 		pca_vlad_features[i] = sum;
 	}
-	printf("here 3\n");
+	//printf("here 3\n");
 	Norm2(pca_dim,pca_vlad_features);
 	memcpy(features,pca_vlad_features,pca_dim * sizeof(float));
-	free(mean);
-	free(pca_proj);
+	// free(mean);
+	// free(pca_proj);
 	free(vlad_features);
 	free(pca_vlad_features);
 	return 0;
 }
 
-int ExtractVladFeatures(unsigned char* data, int nw, int nh, float* vlad_features)
+int ExtractVladFeatures(unsigned char* data, int nw, int nh, float *centroids, float* vlad_features)
 {
 	//printf("here 0\n");
 	float *sift_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * MAX_SIFT_FEATURE_NUM * sizeof(float));	// 没初始化
+	if(sift_features == NULL)
+	{
+		printf("Memory overflow error:can't apply sift features memory!\n");
+		return -1;
+	}
 	int sift_features_num = 0;
 	GetSiftFeatures(data, nw, nh, sift_features,&sift_features_num);
 	printf("sift_num = %d \n",sift_features_num);
-	// printf("here 1\n");
+	//printf("here 1\n");
 
-	char *centroids_file = "data/clust_k64.fvecs";
-	int centroids_dim = 0;
-	float *centroids = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM * sizeof(float));
-	ReadFvecs(centroids_file,&centroids_dim,centroids);
-	int cn = 0;
-	for(cn = 0;cn < SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;cn += SIFT_DESCRIPTOR_DIM)
-	{
-		Norm2(SIFT_DESCRIPTOR_DIM,centroids + cn);
-	}
+	// char *centroids_file = "data/clust_k64.fvecs";
+	// int centroids_dim = 0;
+	// float *centroids = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM * sizeof(float));
+	// ReadFvecs(centroids_file,&centroids_dim,centroids);
+	// int cn = 0;
+	// for(cn = 0;cn < SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;cn += SIFT_DESCRIPTOR_DIM)
+	// {
+	// 	Norm2(SIFT_DESCRIPTOR_DIM,centroids + cn);
+	// }
 	// printf("here 2\n");
 	
 	int *idx = (int *)malloc(sift_features_num * sizeof(int));
@@ -146,9 +151,10 @@ int ExtractVladFeatures(unsigned char* data, int nw, int nh, float* vlad_feature
 	
 	//memcpy(features,vlad_features,INDEX_FEATURE_DIM * sizeof(float));	
 	//printf("here 5");
+	// fcolse(centroids_file);
 	free(idx);
 	free(dis);
-	free(centroids);
+	// free(centroids);
 	free(sift_features);
 	// free(vlad_features);
 	return 0;
@@ -159,6 +165,7 @@ int GetSiftFeatures(unsigned char *data, int nw, int nh, float *features, int *f
 	vl_sift_pix *img_data = (vl_sift_pix *)malloc(sizeof(vl_sift_pix) * nw * nh);
 	if(img_data == NULL)
 	{
+		printf("Memory overflow error:can't apply image data memory!\n");
 		return -1;
 	}
 	unsigned char *pixel;
@@ -195,7 +202,7 @@ int GetSiftFeatures(unsigned char *data, int nw, int nh, float *features, int *f
 					float *curr_features = features + num_descriptors * SIFT_DESCRIPTOR_DIM;
 					// if(save_flag == -1)
 					// {
-						memcpy(curr_features,descriptor,sizeof(float) * INDEX_FEATURE_DIM);
+						memcpy(curr_features,descriptor,sizeof(float) * SIFT_DESCRIPTOR_DIM);
 						//save_flag == 1;
 					// }
 					++num_descriptors;
