@@ -6,5 +6,6 @@ typedef struct _CallBackF
 }CallBackF;
 
 extern int getfeature(char* videofile,char* fealibpath, char * adspath, int id);
+extern int getfeature2(char* videofile,char* fealibpath, char * abspath, int id,long long *duration, int jpgnum);
 extern int getfeature_for_display(char* videofile,char* fealibpath, char * abspath, CallBackF * callbackf, int id, int useid);
 extern int getfeature_callback(char* videofile, CallBackF * callbackf, int useid);

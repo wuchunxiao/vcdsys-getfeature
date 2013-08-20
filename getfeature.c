@@ -596,15 +596,6 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 	{
 		return -1;
 	}
-	char *centroids_file = "data/clust_k64.fvecs";
-	float *centroids = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM * sizeof(float));
-	int centroids_dim = 0;
-	ReadFvecs(centroids_file,&centroids_dim,centroids);
-	int cn = 0;
-	for(cn = 0;cn < SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;cn += SIFT_DESCRIPTOR_DIM)
-	{
-		Norm2(SIFT_DESCRIPTOR_DIM,centroids + cn);
-	}
 	while(av_read_frame(pFormatCtx,&packet)>=0)
 	{
 		if(packet.stream_index==videoStream)
@@ -664,7 +655,7 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 
 				float* currFeatures = features+matchFrameNum*INDEX_FEATURE_DIM; //ALL_FEATURES_DIM;
 				//== 2. fetch and write current frame's features into file
-				get_vlad_feature(yuvdata,width,height,centroids,currFeatures);
+				get_feature(yuvdata,width,height,currFeatures);
 				//== 3. filter similar frame
 
 				//== 4.show picture
@@ -683,6 +674,7 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 				{
 					free(yuvdata);
 				}
+				free(yuvdata);
 
 				matchFrameNum ++;
 				if(matchFrameNum > MAX_FEATURE_FRAME)
@@ -744,7 +736,6 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 
 	}
 
-	free(centroids);
 	free(features);
 	avcodec_close(pCodecCtx);
 	av_close_input_file(pFormatCtx);
@@ -757,6 +748,405 @@ int getfeature(char* videofile,char* fealibpath, char * abspath, int id)
 }
 
 
+int getfeature2(char* videofile,char* fealibpath, char * abspath, int id,long long *duration, int jpgnum)
+{
+	struct timeval start,end;
+	int time_use;
+	gettimeofday(&start,NULL);
+	FILE *f_time = fopen("./result/time.txt","w");
+	if(f_time == NULL)
+	{
+		printf("I/O error: Unable to open the file\n");
+	}
+	// init decode
+	static AVPacket packet;
+	AVFormatContext *pFormatCtx;
+	int i, videoStream;
+	AVCodecContext *pCodecCtx;
+	AVCodec *pCodec;
+	AVFrame *pFrame;
+	AVFrame *pFrameYUV;
+	int numBytes;
+	uint8_t *buffer;
+	int frameFinished;
+	av_register_all();
+	pFrame=avcodec_alloc_frame();
+	pFrameYUV=avcodec_alloc_frame();
+	if(pFrameYUV==NULL){
+		fprintf(stderr, "pFrameYUV==NULL\n");
+		return -1;
+	}
+
+	struct	timeval tpstart,tpend;
+	double	timeuse;
+
+	//open video file
+	if(av_open_input_file(&pFormatCtx, videofile, NULL, 0, NULL) < 0){
+		fprintf(stderr, "Couldn't Open video file\n");
+		return -1; // Couldn't open file
+	}
+
+	
+
+	if (av_find_stream_info(pFormatCtx) < 0){
+		fprintf(stderr, "av_find_stream_info error\n");
+	}
+	if( (pFormatCtx)<0){
+		fprintf(stderr, "Retrieve stream information error\n");
+		return -1; // Couldn't find stream information
+	}
+	*duration = 0;
+	*duration = pFormatCtx->duration/1000000;
+	
+	//printf("here 0\n");
+	dump_format(pFormatCtx, 0, videofile, 0);
+	//printf("here 1\n");
+	videoStream=-1;
+	int fps = 0;
+	int nb_frames = 0;
+	for(i = 0; i < pFormatCtx->nb_streams; i++)
+	{
+		if(pFormatCtx->streams[i]->codec->codec_type==CODEC_TYPE_VIDEO)
+		{
+			videoStream=i;
+			fps = pFormatCtx->streams[i]->r_frame_rate.num/ (double)pFormatCtx->streams[i]->r_frame_rate.den;
+			//if(fps == 0)
+			//	fps =  pFormatCtx->streams[i]->avg_frame_rate;
+			//if(*duration == 0)
+			//	*duration = pFormatCtx->streams[i]->duration/1000000;
+			break;
+		}
+	}
+
+	//printf("here 2\n");
+	if(videoStream==-1)
+	{
+		fprintf(stderr, "Didn't find a video stream and pFormatCtx->nb_streams is %d\n",pFormatCtx->nb_streams);
+		return -1; // Didn't find a video stream
+	}
+
+	//printf("here 3\n");
+	//open codec
+	pCodecCtx=pFormatCtx->streams[videoStream]->codec;
+	pCodec=avcodec_find_decoder(pCodecCtx->codec_id);
+	if(pCodec==NULL){
+		fprintf(stderr, "Codec not found\n");
+		return -1; // Codec not found
+	}
+	if(pCodec->capabilities & CODEC_CAP_TRUNCATED)
+		pCodecCtx->flags|=CODEC_FLAG_TRUNCATED;
+	if(avcodec_open(pCodecCtx, pCodec)<0){
+		fprintf(stderr, "pFrameYUV==NULL\n");
+		return -1; // Could not open codec
+	}
+
+	int step = 0;
+	if(fps == 0)
+		fps = pCodecCtx->time_base.num/pCodecCtx->time_base.den;
+	if(fps == 0 || fps > 30)
+		fps = 25;
+	if(*duration == 0 || *duration == AV_NOPTS_VALUE)
+	{
+		step = 100;
+		*duration = 0;
+	}
+	else
+		step = ((*duration) * fps) / jpgnum;
+	nb_frames = pCodecCtx->frame_number;
+	printf("================================fps is %d\n", fps);
+	printf("================================nb_frames is %d\n", nb_frames);
+	printf("================================step is %d\n", step);
+	//printf("here 4\n");
+	
+	int frame_no = 0;
+	int video_id = -1;
+	//pFrame->key_frame = 1;
+	int width = pCodecCtx->width;
+	int height = pCodecCtx->height;
+		
+	int I_Frame = 0;
+	int B_Frame = 0;
+	//gettimeofday(&tpstart,NULL);
+
+	int ifabs = 0;
+	pthread_t pid;
+	yuvList * yuvlist = NULL; 
+	if(strcmp(abspath,"NULL"))
+	{
+		ifabs = 1;
+	}
+
+	char saveViewPath[1024];
+
+	if(ifabs)   // abspath不为NULL,存储摘要视频
+	{
+
+		char absfile[1024];
+		memset(absfile,0,1024);
+    	
+		if(id != -1)    // start_id != -1时, 对视频名称按照id(1,2,...)重新命名,进行存储
+		{
+			sprintf(absfile,"%s/%d.flv",abspath,id);  
+		    sprintf(saveViewPath , "%s/%d/" , abspath, id);
+			mkdir(saveViewPath,S_IRWXU);	
+		}
+		else            // start_id == -1时,按照视频的原名进行存储
+		{
+			//printf("here 4.1 %s\n",videofile);
+			char* p = strrchr(videofile,'/');
+			//printf("here 4.2 %s\n",p);
+			char* sub = strrchr(p+1,'.');
+			//if(strcmp(sub,".M2TS")!=0)
+			//{
+			//	exit(0);
+			//}		
+			//printf("here 4.3\n");
+			char filename[1024];
+			//printf("here 4.4\n");
+			memset(filename,0,1024);
+			//printf("here 4.5\n");
+			strncpy(filename,p+1,strlen(p)-1-strlen(sub));
+			//sprintf(saveViewPath , "%s/%s/" , abspath, filename);
+			sprintf(saveViewPath , "%s/%s" , abspath, filename);
+			mkdir(saveViewPath,S_IRWXU);
+			//printf("here 4.6\n");
+			strcat(filename,".flv");
+			//printf("here 4.7\n");
+			sprintf(absfile,"%s/%s",abspath,filename);
+			//printf("here 4.8\n");
+			//printf("absfile is %s\n",absfile);
+			
+		}    
+
+	}
+		
+	//printf("here 5\n");
+	int matchFrameNum = 0;
+	int totalframecount = 0;
+	float* features = (float*)malloc(INDEX_FEATURE_DIM*MAX_FEATURE_FRAME*sizeof(float));
+	if(features == NULL)
+	{
+		printf("Memory overflow error:can't apply features memory!\n");
+		return -1;
+	}
+	// 可以放在更外一层，不过时间影响不大
+	// printf("sif_dim = %d,vlad_cen_num = %d\n",SIFT_DESCRIPTOR_DIM , VLAD_CENTROIDS_NUM);
+	char *centroids_file = "data/clust_k64.fvecs";
+	float *centroids = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM * sizeof(float));
+	if(centroids == NULL)
+	{
+		printf("Memory overflow error:can't apply features memory!\n");
+		return -1;
+	}
+	int centroids_dim = 0;
+	ReadFvecs(centroids_file,&centroids_dim,centroids);
+	int cn = 0;
+	for(cn = 0;cn < SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;cn += SIFT_DESCRIPTOR_DIM)
+	{
+		Norm2(SIFT_DESCRIPTOR_DIM,centroids + cn);
+	}
+	int do_compute_pca_vlad = 0;
+	int vlad_feature_dim = SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;
+	char *f_pca_proj = "data/pca_proj_matrix_vladk64_flickr1Mstar.fvecs";
+	float *mean = (float *)malloc(vlad_feature_dim * sizeof(float));
+	float *pca_proj = (float *)malloc(vlad_feature_dim * 1024 *sizeof(float));	// only the 1024 eigenvectors are stored
+	if(do_compute_pca_vlad)
+	{
+		ReadPCAProj(f_pca_proj,mean,pca_proj);
+	}
+	prepareTran();
+	gettimeofday(&end,NULL);
+	time_use = 1000000 * (end.tv_sec - start.tv_sec) + end.tv_usec - start.tv_usec;
+	time_use /= 1000;
+	printf("Decode and Read centroids Time = %d ms\n",time_use);
+	fprintf(f_time,"Decode and Read centroids Time = %d ms\n",time_use);
+
+	gettimeofday(&start,NULL);
+	while(av_read_frame(pFormatCtx,&packet)>=0)
+	{
+		if(packet.stream_index==videoStream)
+		{
+			/*
+			if(packet.flags)
+			{
+				I_Frame ++;
+			}
+			else
+			{
+				B_Frame ++;
+			}
+			
+			*/
+			//printf("Before decode\n");
+			avcodec_decode_video(pCodecCtx, pFrame, &frameFinished,packet.data, packet.size);
+			//printf("After decode\n");
+			//avcodec_decode_video2(pCodecCtx, pFrame, &frameFinished,&packet);
+			if(frameFinished)
+			{
+				unsigned char* yuvdata = NULL;
+				yuvdata = (unsigned char*)malloc(sizeof(unsigned char)*width*height*3/2);
+				if(yuvdata == NULL)
+				{
+					break;
+				}
+				int yuvwidth = width;
+				int yuvheight = height;
+				unsigned char* ptr = 0;
+				int linesize = 0;
+				int offset = 0;
+
+				int mi;
+				for(mi=0;mi<3;mi++) {		
+					ptr = pFrame->data[mi];
+					linesize = pFrame->linesize[mi];
+					if (mi == 1) {
+						yuvwidth >>= 1;
+						yuvheight >>= 1;						 
+					}
+					int j;
+					for(j=0;j<yuvheight;j++) {								
+						memcpy(yuvdata+offset,ptr,yuvwidth*sizeof(uint8_t));
+						ptr += linesize;
+						offset += yuvwidth;
+					}	
+				}
+			
+				totalframecount++;				
+	
+				//== 1.filter none match frames,
+				if (!FilterFrame(yuvdata,width, height))
+				{							
+					//skipframe ++;
+					free(yuvdata);
+					continue;
+				}				
+				// printf("get_vald\n");
+				float* currFeatures = features+matchFrameNum*INDEX_FEATURE_DIM; //ALL_FEATURES_DIM;
+				//== 2. fetch and write current frame's features into file
+				struct timeval fea_start,fea_end;
+				gettimeofday(&fea_start,NULL);
+				get_vlad_feature(yuvdata,width,height,centroids,currFeatures);
+				// get_pca_vlad_feature(yuvdata,width,height,centroids,mean,pca_proj,INDEX_FEATURE_DIM,currFeatures);
+				gettimeofday(&fea_end,NULL);
+				time_use = 1000000 * (fea_end.tv_sec - fea_start.tv_sec) + fea_end.tv_usec - fea_start.tv_usec;
+				time_use /= 1000;
+    			printf("Get Feature Time = %d ms\n",time_use);
+    			fprintf(f_time,"Get Feature Time = %d ms\n",time_use);
+				//== 3. filter similar frame
+				free(yuvdata);
+
+				matchFrameNum ++;
+				if(matchFrameNum > MAX_FEATURE_FRAME)
+				{
+					printf("Reach Max Frames!\n");
+					break;
+				}
+			}
+		}
+		
+		av_free_packet(&packet);
+	}
+	gettimeofday(&end,NULL);
+	time_use = 1000000 * (end.tv_sec - start.tv_sec) + end.tv_usec - start.tv_usec;
+	time_use /= 1000;
+    printf("Get Feature Time = %d ms\n",time_use);
+    fprintf(f_time,"Get Feature Time = %d ms\n",time_use);
+	//delete [] buffer;
+	av_free(pFrameYUV);
+	
+	printf("***************************Total Frame Count is %d\n",totalframecount);
+
+	gettimeofday(&start,NULL);
+	// Reduce the features
+	matchFrameNum = FeatureRefine(matchFrameNum,features);
+	//printf("after reduce!\n");
+
+	if(matchFrameNum)
+	{
+		char smpfile[1024];
+		memset(smpfile,0,1024);
+		if(id != -1)
+		{
+			sprintf(smpfile,"%s\%d.smp",fealibpath,id);
+		}
+		else
+		{
+			char* p = strrchr(videofile,'/');
+			char* sub = strrchr(p+1,'.');
+			char filename[1024];
+			memset(filename,0,1024);
+			strncpy(filename,p+1,strlen(p)-1-strlen(sub));
+			strcat(filename,".smp");
+			sprintf(smpfile,"%s/%s",fealibpath,filename);
+		}    
+		/*if(do_compute_pca_vlad)
+		{
+			int pca_dim = 128;
+			float *pca_vlad_features = (float *)malloc(matchFrameNum * pca_dim * sizeof(float));
+			int i = 0,j = 0;
+			for(i = 0;i < matchFrameNum;++i)
+			{
+				for(j = 0;j < vlad_feature_dim;++i)
+				{
+					features[i * vlad_feature_dim + j] -= mean[j];
+				}
+			}
+			int k = 0;
+			for(k = 0;k < matchFrameNum;++k)
+			{
+				for(i = 0;i < pca_dim;++i)
+				{
+					float sum = 0;
+					for(j = 0;j < vlad_feature_dim;++j)	
+					{
+						sum += pca_proj[i * vlad_feature_dim + j] * vlad_features[k * vlad_feature_dim + j];
+					}
+					pca_vlad_features[k * vlad_feature_dim + i] = sum;
+				}
+			}
+			for(i = 0;i < matchFrameNum;i += pca_dim)
+				Norm2(pca_dim,pca_vlad_features + i);
+		}*/
+
+		FILE * pfFeature = fopen(smpfile, "wb");
+		if(pfFeature == NULL)
+		{
+			printf("I/O error: Unable to open the file %s\n", smpfile);
+			return -1;
+		}
+		fwrite(&matchFrameNum,sizeof(int),1,pfFeature);
+		int i = 0;
+		for (i=0; i<matchFrameNum; i++)
+		{
+			fwrite(features+i*INDEX_FEATURE_DIM,sizeof(float),INDEX_FEATURE_DIM,pfFeature);
+		}
+		fclose(pfFeature);
+		printf("Process %d frame\n",matchFrameNum);
+		printf("Save feafile to %s\n",smpfile);
+		printf("=============================\n");
+	}			
+	else
+	{
+
+	}
+	gettimeofday(&end,NULL);
+	time_use = 1000000 * (end.tv_sec - start.tv_sec) + end.tv_usec - start.tv_usec;
+	time_use /= 1000;
+    printf("Feature Refine and Save = %d ms\n",time_use);
+    fprintf(f_time,"Feature Refine and save = %d ms\n",time_use);
+	fclose(f_time);
+
+	free(mean);
+	free(pca_proj);
+
+	free(centroids);
+	free(features);
+	avcodec_close(pCodecCtx);
+	av_close_input_file(pFormatCtx);
+	av_free(pFrame);
+
+	return 0;
+}
 int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, long long *duration, int jpgnum)
 {
 	// init decode
@@ -935,6 +1325,7 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 		printf("Memory overflow error:can't apply features memory!\n");
 		return -1;
 	}
+	// 可以放在更外一层，不过时间影响不大
 	// printf("sif_dim = %d,vlad_cen_num = %d\n",SIFT_DESCRIPTOR_DIM , VLAD_CENTROIDS_NUM);
 	char *centroids_file = "data/clust_k64.fvecs";
 	float *centroids = (float *)malloc(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM * sizeof(float));
@@ -950,7 +1341,7 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 	{
 		Norm2(SIFT_DESCRIPTOR_DIM,centroids + cn);
 	}
-	int do_compute_pca_vlad = 1;
+	int do_compute_pca_vlad = 0;
 	int vlad_feature_dim = SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM;
 	char *f_pca_proj = "data/pca_proj_matrix_vladk64_flickr1Mstar.fvecs";
 	float *mean = (float *)malloc(vlad_feature_dim * sizeof(float));
@@ -1022,8 +1413,8 @@ int getfeature_jpg(char* videofile,char* fealibpath, char * abspath, int id, lon
 				// printf("get_vald\n");
 				float* currFeatures = features+matchFrameNum*INDEX_FEATURE_DIM; //ALL_FEATURES_DIM;
 				//== 2. fetch and write current frame's features into file
-				// get_vlad_feature(yuvdata,width,height,centroids,currFeatures);
-				get_pca_vlad_feature(yuvdata,width,height,centroids,mean,pca_proj,INDEX_FEATURE_DIM,currFeatures);
+				get_vlad_feature(yuvdata,width,height,centroids,currFeatures);
+				// get_pca_vlad_feature(yuvdata,width,height,centroids,mean,pca_proj,INDEX_FEATURE_DIM,currFeatures);
 				//== 3. filter similar frame
 				//if(vkfcount == 0 || ++framecount == step && ifabs )
 				if(++framecount == 5)   // 每隔5帧存一张图片

@@ -103,15 +103,24 @@ int get_pca_vlad_feature(unsigned char *data,int nw,int nh,float *centroids,floa
 int ExtractVladFeatures(unsigned char* data, int nw, int nh, float *centroids, float* vlad_features)
 {
 	//printf("here 0\n");
+	FILE * f_fea_time = fopen("./result/fea_time.txt","w");
+	struct timeval start,end;
+	int time_used;
 	float *sift_features = (float *)malloc(SIFT_DESCRIPTOR_DIM * MAX_SIFT_FEATURE_NUM * sizeof(float));	// √ª≥ı ºªØ
 	if(sift_features == NULL)
 	{
 		printf("Memory overflow error:can't apply sift features memory!\n");
 		return -1;
 	}
+	gettimeofday(&start,NULL);
 	int sift_features_num = 0;
 	GetSiftFeatures(data, nw, nh, sift_features,&sift_features_num);
 	printf("sift_num = %d \n",sift_features_num);
+	gettimeofday(&end,NULL);
+	time_used = 1000000 * (end.tv_sec - start.tv_sec) + end.tv_usec - start.tv_usec;
+	time_used /= 1000;
+    printf("Get SIFT Feature Time = %d ms\n",time_used);
+    fprintf(f_fea_time,"Get SIFT Feature Time = %d ms\n",time_used);
 	//printf("here 1\n");
 
 	// char *centroids_file = "data/clust_k64.fvecs";
@@ -124,11 +133,11 @@ int ExtractVladFeatures(unsigned char* data, int nw, int nh, float *centroids, f
 	// 	Norm2(SIFT_DESCRIPTOR_DIM,centroids + cn);
 	// }
 	// printf("here 2\n");
-	
+	gettimeofday(&start,NULL);
 	int *idx = (int *)malloc(sift_features_num * sizeof(int));
 	float *dis = (float *)malloc(sift_features_num * sizeof(float));
 	memset(idx,0,sift_features_num * sizeof(int));
-	memset(dis,0,sift_features_num * sizeof(float));
+	memset(dis,0.0,sift_features_num * sizeof(float));
 	FindNearestNeighbors(centroids,VLAD_CENTROIDS_NUM,sift_features,sift_features_num,SIFT_DESCRIPTOR_DIM,idx,dis);
 	// printf("here 3\n");
 	
@@ -147,6 +156,12 @@ int ExtractVladFeatures(unsigned char* data, int nw, int nh, float *centroids, f
 	//exit(1);
 	// L2-normalized
 	Norm2(SIFT_DESCRIPTOR_DIM * VLAD_CENTROIDS_NUM,vlad_features);	
+	gettimeofday(&end,NULL);
+	time_used = 1000000 * (end.tv_sec - start.tv_sec) + end.tv_usec - start.tv_usec;
+	time_used /= 1000;
+    printf("SIFT Feature Convert to VLAD Time = %d ms\n",time_used);
+    fprintf(f_fea_time,"SIFT Feature Convert to VLAD Time = %d ms\n\n",time_used);
+	fclose(f_fea_time);
 	// printf("here 4.2\n");
 	
 	//memcpy(features,vlad_features,INDEX_FEATURE_DIM * sizeof(float));	

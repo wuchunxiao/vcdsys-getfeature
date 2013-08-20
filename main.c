@@ -43,12 +43,12 @@ int main(int argc, char **argv)
 				printf("Getting %s's Feature\n",videofile);
 				if(feaid != -1)
 				{
-					getfeature_jpg(videofile, argv[2],argv[3],feaid++, &duration, jpgnum);
+					getfeature2(videofile, argv[2],argv[3],feaid++, &duration, jpgnum);
 					//getfeature(videofile,argv[2],argv[3],feaid++);
 				}
 				else
 				{
-					getfeature_jpg(videofile, argv[2],argv[3],feaid, &duration, jpgnum);
+					getfeature2(videofile, argv[2],argv[3],feaid, &duration, jpgnum);
 					//getfeature(videofile,argv[2],argv[3],feaid);
 				}
 				printf("================================Duration is %I64d s\n", duration);
